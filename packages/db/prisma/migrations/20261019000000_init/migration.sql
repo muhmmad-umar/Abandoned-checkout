@@ -54,6 +54,7 @@ CREATE TABLE "users" (
     "name" TEXT,
     "plan_tier" "PlanTier" NOT NULL DEFAULT 'free',
     "notification_preferences" JSONB NOT NULL DEFAULT '{"email":true,"slack":false,"inApp":true}',
+    "angle_taxonomy" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")

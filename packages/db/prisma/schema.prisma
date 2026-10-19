@@ -121,6 +121,8 @@ model User {
   planTier                PlanTier @default(free) @map("plan_tier")
   /// { email: bool, slack: bool, inApp: bool, slackWebhookUrl?: string }
   notificationPreferences Json     @default("{\"email\":true,\"slack\":false,\"inApp\":true}") @map("notification_preferences")
+  /// Client-defined creative angle names; empty means the default taxonomy.
+  angleTaxonomy           String[] @default([]) @map("angle_taxonomy")
   createdAt               DateTime @default(now()) @map("created_at")
 
   adAccounts       AdAccount[]
@@ -389,8 +391,9 @@ model ScalingRecommendation {
   createdAt    DateTime             @default(now()) @map("created_at")
   resolvedAt   DateTime?            @map("resolved_at")
 
-  campaign Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  cycle    ScalingCycle?
+  campaign Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  /// Attempts to apply this recommendation; at most one is not 'failed'.
+  cycles   ScalingCycle[]
 
   @@index([campaignId, createdAt])
   @@map("scaling_recommendations")
@@ -399,7 +402,7 @@ model ScalingRecommendation {
 model ScalingCycle {
   id                         String        @id @default(cuid())
   campaignId                 String        @map("campaign_id")
-  recommendationId           String?       @unique @map("recommendation_id")
+  recommendationId           String?       @map("recommendation_id")
   cycleNumber                Int           @map("cycle_number")
   status                     CycleStatus   @default(executing)
   startedAt                  DateTime      @default(now()) @map("started_at")
@@ -430,6 +433,7 @@ model ScalingCycle {
   logs           ScalingLog[]
 
   @@index([campaignId, startedAt])
+  @@index([recommendationId])
   @@map("scaling_cycles")
 }
 
