@@ -148,7 +148,7 @@ export async function evaluateScaling(deps: Deps, campaignId: string): Promise<E
     return { status: "awaiting_creative_analysis" };
   }
   const { decision, metrics } = current;
-  const healthScore = calculateScalingHealthScore(ctx.cycles, metrics);
+  const healthScore = calculateScalingHealthScore(ctx.cycles, metrics, { minRoas: ctx.thresholds.hardStopMinRoas, maxCpa: ctx.thresholds.hardStopMaxCpa });
 
   // Monitoring mode (goal reached, client chose to hold): alert on problems, never recommend increases.
   if (monitoring) {
@@ -302,6 +302,8 @@ export async function executeScaling(deps: Deps, req: ExecuteRequest): Promise<E
     db.scalingRecommendation.update({ where: { id: rec.id }, data: { status: "applied", resolvedAt: deps.now() } }),
   ]);
   await refreshScalingProfile(deps, campaignId, req.userId);
+  // Replace the consumed recommendation with the cooldown view right away.
+  await evaluateScaling(deps, campaignId).catch(() => undefined);
   return { ok: true, cycleId, cycleNumber: plan.cycleNumber, budgetBefore: plan.budgetBefore, budgetAfter: plan.budgetAfter, cooldownEndsAt: plan.cooldownEndsAt };
 }
 

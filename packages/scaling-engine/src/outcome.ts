@@ -46,7 +46,7 @@ export function evaluateOutcome(cycle: CycleRecord, postMetrics: MetricPoint): O
 
   const sys = cycle.systemRecommendationPct;
   const chose = cycle.clientChosenPct;
-  const prefix = `You scaled ${chose}% (we suggested ${sys}%).`;
+  const prefix = `You scaled ${chose}% (we suggested ${sys === 0 ? "holding" : `${sys}%`}).`;
 
   let whoWasRight: WhoWasRight;
   let note: string;
@@ -91,7 +91,7 @@ export interface OverrideHistoryRow {
 export function buildOverrideHistory(cycles: CycleRecord[]): OverrideHistoryRow[] {
   return appliedCycles(cycles).map((c) => ({
     cycle: c.cycleNumber,
-    systemSaid: `+${c.systemRecommendationPct}%`,
+    systemSaid: c.systemRecommendationPct === 0 ? "Hold" : `+${c.systemRecommendationPct}%`,
     clientChose: `+${c.clientChosenPct}%`,
     outcome: c.postMetrics ? evaluateOutcome(c, c.postMetrics).historyLabel : "In cooldown",
     early: c.earlyTriggerFlag,

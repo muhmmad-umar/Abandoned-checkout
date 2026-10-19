@@ -65,6 +65,10 @@ describe("detectCeiling", () => {
     expect(detectCeiling([dec(1), dec(2)], healthy, brief()).detected).toBe(false);
     expect(detectCeiling([dec(1), dec(2), dec(3)], healthy, brief()).reasons.map((r) => r.code)).toEqual(["declining_efficiency"]);
   });
+  it("treats small per-cycle efficiency loss as normal diminishing returns", () => {
+    const slight = (n: number) => cycle({ cycleNumber: n, preMetrics: point({ efficiency: 0.05 }), postMetrics: point({ efficiency: 0.049 }) });
+    expect(detectCeiling([slight(1), slight(2), slight(3)], healthy, brief()).detected).toBe(false);
+  });
   it("ignores failed cycles", () => {
     const m = aggregateWindow(days(4, { impressions: 75_000 }), 4);
     expect(detectCeiling([cycle({ status: "failed" })], m, brief()).detected).toBe(false);
@@ -84,6 +88,11 @@ describe("calculateScalingHealthScore", () => {
   it("bottoms out at a ceiling", () => {
     const m = aggregateWindow(days(4, { revenue: 1000, impressions: 60_000, conversions: 30, frequency: 4.5 }), 4);
     expect(scalingHealthLabel(calculateScalingHealthScore([cycle()], m))).toBe("ceiling");
+  });
+  it("caps at the pause band when the client's limits are breached", () => {
+    const flatButBad = aggregateWindow(days(4, { revenue: 1300 }), 4); // ROAS 1.3, stable
+    expect(calculateScalingHealthScore([], flatButBad)).toBeGreaterThan(80);
+    expect(calculateScalingHealthScore([], flatButBad, { minRoas: 1.5, maxCpa: 45 })).toBe(39);
   });
   it("labels bands", () => {
     expect([85, 70, 45, 10].map(scalingHealthLabel)).toEqual(["scaling_freely", "healthy", "caution", "ceiling"]);

@@ -78,6 +78,8 @@ export interface Thresholds {
     roasDropPct: number;
     cpaOverMaxPct: number;
     decliningEfficiencyCycles: number;
+    /** Efficiency loss per cycle that counts as "declining" (some loss is normal as budget grows). */
+    efficiencyDropPct?: number;
   };
   fatigue: { frequency: number; ctrDeclinePct: number; roasDegradePct: number };
 }

@@ -3,20 +3,29 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:engines": "vitest run packages/creative-engine packages/scaling-engine",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm run typecheck -w @ad-scaler/web",
     "db:generate": "npm run generate -w @ad-scaler/db",
     "db:migrate": "npm run migrate:deploy -w @ad-scaler/db",
     "dev:api": "npm run dev -w @ad-scaler/api",
-    "dev:worker": "npm run worker -w @ad-scaler/queue"
+    "dev:worker": "npm run worker -w @ad-scaler/queue",
+    "seed:demo": "npm run seed:demo -w @ad-scaler/queue --",
+    "dev:web": "npm run dev -w @ad-scaler/web"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsx": "^4.19.0",
     "typescript": "~5.6.3",
     "vitest": "^2.1.9"
+  },
+  "overrides": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   }
 }

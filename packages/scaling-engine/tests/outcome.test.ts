@@ -31,6 +31,11 @@ describe("evaluateOutcome", () => {
     expect(r).toMatchObject({ outcome: "as_expected", whoWasRight: "aligned", note: "ROAS held at 2.3x — on track." });
     expect(r.historyLabel).toBe("ROAS held — on track");
   });
+  it("says 'holding' when the system recommended no increase", () => {
+    const c = cycle({ systemRecommendationPct: 0, clientChosenPct: 20, overrideFlag: true, preMetrics: pre });
+    expect(evaluateOutcome(c, point({ roas: 1.9, dailyConversions: 50 })).note).toMatch(/^You scaled 20% \(we suggested holding\)\./);
+    expect(buildOverrideHistory([{ ...c, postMetrics: point() }])[0]!.systemSaid).toBe("Hold");
+  });
   it("flags conversions that did not scale with budget", () => {
     const r = evaluateOutcome(cycle({ preMetrics: pre }), point({ roas: 2.3, dailyConversions: 48 }));
     expect(r.outcome).toBe("worse");

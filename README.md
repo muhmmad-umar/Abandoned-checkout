@@ -14,7 +14,7 @@ Nothing runs until the client submits a **Scaling Brief** (current state, target
 ```
 apps/
   api/              Fastify API (Clerk auth, Meta OAuth, all client actions)
-  web/              Next.js 14 dashboard (not built yet; see "Status")
+  web/              Next.js 14 dashboard (App Router, Tailwind, shadcn/ui-style components, Clerk)
 packages/
   shared/           Scaling Brief types, client-facing formatting, token encryption
   creative-engine/  Phase 1 pure functions
@@ -47,6 +47,44 @@ The two engines have **zero side effects**: no API calls, no DB writes. Workers 
 - **The client has final say on the step.** Any % is allowed. The system shows one inline opinion when the choice differs from its own, then proceeds. Scaling early during a cooldown, or past a detected ceiling, is allowed when the client explicitly asks.
 - **Tokens are encrypted at rest** (AES-256-GCM). The OAuth `state` is HMAC-signed and expires.
 
+## Dashboard
+
+- **Campaigns**: every campaign with its status, creative health and scaling health.
+- **Campaign page**: the goal-progress header is always visible. Below it are five tabs:
+  - **Overview** shows exactly one decision card for the current state: the recommendation (with the inline opinion on override), the cooldown with its early-scale request, blocked, ceiling (with continue-anyway), or goal reached (new target, monitor, or pause). Beside it are the scaling-health trend and creative health.
+  - **Creatives**: the leaderboard, with inline tagging of angle, visual style and tone.
+  - **Creative brief**: winning patterns, one card per creative to make, a status tracker (brief sent → in production → uploaded → live), and creatives to retire.
+  - **Scaling timeline**: the cycle log, plus the roadmap projected vs actual.
+  - **Override history**: the client's scaling profile and its one-time pattern insight, the override table, and the audit log.
+- **Scaling Brief** (`/campaigns/:id/setup`): the four-section form, with a live roadmap, creative plan and thresholds preview. Validation errors from the API show on the field they belong to.
+- **Ad accounts**, **Settings** (notification channels, angle taxonomy) and **Notifications**.
+
+All mutations are server actions that call the API with the user's Clerk session token, so the browser never talks to the API directly.
+
+## Try it without Meta or Clerk (demo mode)
+
+Demo mode is for local development only. The API, worker and web app refuse it when `NODE_ENV=production`.
+
+```bash
+createdb scaler_demo
+export DATABASE_URL=postgresql://localhost/scaler_demo REDIS_URL=redis://localhost:6379 \
+  TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32) APP_URL=http://localhost:3000 \
+  API_URL=http://localhost:4000 DEV_AUTH_USER=demo_user DEMO_MODE=1
+npm run db:migrate
+npm run seed:demo -- --reset   # wipes this database
+npm run dev:api & npm run dev:worker & npm run dev:web
+```
+
+The seed replays 30 days through the real jobs against a simulated ad platform, with a scripted client making the choices. It leaves one campaign in each state:
+
+- a recommendation waiting for you
+- cooling down (try "Scale now")
+- blocked on creative health
+- at a scaling ceiling
+- a fresh import that still needs its brief
+
+Applying a change from the dashboard runs through the real queue and worker.
+
 ## Running locally
 
 Requirements: Node 22, PostgreSQL 16, Redis.
@@ -57,6 +95,7 @@ npm install                     # also generates the Prisma client
 npm run db:migrate              # applies packages/db/prisma/migrations
 npm run dev:api                 # http://localhost:4000
 npm run dev:worker              # sync / creative / scaling workers
+npm run dev:web                 # http://localhost:3000
 ```
 
 Tests:
@@ -125,6 +164,6 @@ Built, following the spec's build order:
 8. BullMQ workers
 9. Notifications
 
-The backend for items 10-14 is in place: every dashboard view, the recommendation, cooldown override, brief tracker and profile all have endpoints.
+10-14. Dashboard, recommendation UI, cooldown override UI, creative brief tracker, and client scaling profile
 
-**Next:** `apps/web`, the Next.js 14 + Tailwind + shadcn/ui dashboard (items 10-14), followed by Railway deployment config and Google Ads.
+**Next:** Railway deployment config, then Google Ads.

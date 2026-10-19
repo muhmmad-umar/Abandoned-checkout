@@ -68,7 +68,7 @@ export function deriveThresholds(brief: ScalingBrief): Thresholds {
     creativeBriefCadenceDays: refreshIntervalDays(brief.creativeRefreshFrequency),
     creativeHealthBlockThreshold: 60,
     learningPhase: { minAgeDays: 7, minConversions, minSpend: round2(minConversions * targets.targetCpa * 0.5) },
-    ceiling: { cpmIncreasePct: 0.25, roasDropPct: 0.2, cpaOverMaxPct: 0.1, decliningEfficiencyCycles: 3 },
+    ceiling: { cpmIncreasePct: 0.25, roasDropPct: 0.2, cpaOverMaxPct: 0.1, decliningEfficiencyCycles: 3, efficiencyDropPct: 0.05 },
     fatigue: { frequency: 3.5, ctrDeclinePct: 0.15, roasDegradePct: 0.2 },
   };
 }

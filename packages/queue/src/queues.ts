@@ -23,6 +23,7 @@ export function connectionFromUrl(url: string): ConnectionOptions {
     port: Number(u.port || 6379),
     username: u.username || undefined,
     password: u.password || undefined,
+    db: Number(u.pathname.replace(/^\//, "")) || 0,
     tls: u.protocol === "rediss:" ? {} : undefined,
     maxRetriesPerRequest: null,
   };
@@ -48,14 +49,17 @@ export function createQueues(connection: ConnectionOptions): Queues {
   };
 }
 
-/** BullMQ-backed Enqueuer. Job ids dedupe bursts of identical requests. */
+/**
+ * BullMQ-backed Enqueuer. Job ids dedupe bursts of identical requests.
+ * Ids use "-" separators: BullMQ rejects custom ids containing ":" (reserved for its own keys).
+ */
 export function bullEnqueuer(q: Queues): Enqueuer {
   return {
-    sync: async (campaignId) => void (await q.sync.add(JOB.sync, { campaignId }, { jobId: `sync:${campaignId}:${Math.floor(Date.now() / 60_000)}` })),
+    sync: async (campaignId) => void (await q.sync.add(JOB.sync, { campaignId }, { jobId: `sync-${campaignId}-${Math.floor(Date.now() / 60_000)}` })),
     creativeAnalysis: async (campaignId, trigger: AnalysisTriggerName) =>
-      void (await q.creative.add(JOB.creative, { campaignId, trigger }, { jobId: `creative:${campaignId}:${trigger}:${Math.floor(Date.now() / 600_000)}` })),
+      void (await q.creative.add(JOB.creative, { campaignId, trigger }, { jobId: `creative-${campaignId}-${trigger}-${Math.floor(Date.now() / 600_000)}` })),
     evaluateScaling: async (campaignId) =>
-      void (await q.scaling.add(JOB.evaluate, { campaignId }, { jobId: `evaluate:${campaignId}:${Math.floor(Date.now() / 60_000)}` })),
+      void (await q.scaling.add(JOB.evaluate, { campaignId }, { jobId: `evaluate-${campaignId}-${Math.floor(Date.now() / 60_000)}` })),
   };
 }
 
@@ -77,6 +81,6 @@ export async function unscheduleCampaign(q: Queues, campaignId: string) {
 
 /** Queues a client's budget change and waits for the worker's result. Never retried automatically. */
 export async function requestExecution(q: Queues, req: ExecuteRequest, timeoutMs = 60_000) {
-  const job = await q.scaling.add(JOB.execute, req, { attempts: 1, jobId: `execute:${req.recommendationId}:${Date.now()}` });
+  const job = await q.scaling.add(JOB.execute, req, { attempts: 1, jobId: `execute-${req.recommendationId}-${Date.now()}` });
   return job.waitUntilFinished(q.scalingEvents, timeoutMs);
 }

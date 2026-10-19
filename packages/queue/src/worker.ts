@@ -6,6 +6,10 @@ import { decryptSecret } from "@ad-scaler/shared";
 import type { Deps } from "./deps";
 import { creativeProcessor, scalingProcessor, syncProcessor } from "./processors";
 import { bullEnqueuer, connectionFromUrl, createQueues, QUEUE } from "./queues";
+import { SimulatedPlatform } from "./demo/simulated-platform";
+
+/** Local demo mode: accounts named demo_* use the simulated platform. Never in production. */
+const DEMO = process.env.NODE_ENV !== "production" && process.env.DEMO_MODE === "1";
 
 const env = (k: string) => {
   const v = process.env[k];
@@ -27,6 +31,7 @@ async function main() {
   const deps: Deps = {
     db,
     platformFor: (account) => {
+      if (DEMO && account.accountId.startsWith("demo_")) return new SimulatedPlatform(db, () => new Date());
       if (account.platform !== "meta") throw new Error(`Platform ${account.platform} is not supported yet`);
       return new MetaClient(decryptSecret(account.accessToken, key), {
         version: process.env.META_API_VERSION,
@@ -45,7 +50,7 @@ async function main() {
     new Worker(QUEUE.scaling, scalingProcessor(deps), { connection, concurrency: 5 }),
   ];
   for (const w of workers) w.on("failed", (job, err) => console.error(`[${w.name}] ${job?.name} ${job?.id} failed:`, err.message));
-  console.log("Workers running:", workers.map((w) => w.name).join(", "));
+  console.log("Workers running:", workers.map((w) => w.name).join(", "), DEMO ? "(demo mode)" : "");
 
   const shutdown = async () => {
     await Promise.all(workers.map((w) => w.close()));

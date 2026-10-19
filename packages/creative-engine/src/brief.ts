@@ -70,7 +70,8 @@ export function buildBrief(
     whatToAvoid: avoid,
   });
   const fmtLabel = (f: string) => patternLabel("format", f);
-  const angleLabel = (a: string) => (a.startsWith("your ") ? a : patternLabel("angle", a).toLowerCase());
+  const an = (word: string) => (/^[aeiou]/i.test(word) && !/^u[bcfhjkqrst][aeiou]/i.test(word) && !/^UGC/.test(word) ? "an" : "a");
+  const angleLabel = (a: string) => (a.startsWith("your ") ? a : patternLabel("angle", a).toLowerCase().replace("ugc", "UGC"));
 
   replacements.forEach((f, i) => {
     const format = formats[i % formats.length]!;
@@ -80,7 +81,7 @@ export function buildBrief(
       priority: items.length + 1,
       kind: "replacement",
       replacesAdId: f.adId,
-      rationale: `Replaces "${f.name}" (${f.reasons[0]!.message.replace(/\.$/, "")}). A ${fmtLabel(format)} with a ${angleLabel(angle)} follows your strongest pattern${lead ? `: ${evidence(lead)}` : ""}.`,
+      rationale: `Replaces "${f.name}" (${f.reasons[0]!.message.replace(/\.$/, "")}). ${an(fmtLabel(format)) === "an" ? "An" : "A"} ${fmtLabel(format)} with ${an(angleLabel(angle))} ${angleLabel(angle)} follows your strongest pattern${lead ? `: ${evidence(lead)}` : ""}.`,
     });
   });
   for (let i = 0; i < volume; i++) {
@@ -103,7 +104,7 @@ export function buildBrief(
       priority: items.length + 1,
       kind: "exploration",
       replacesAdId: null,
-      rationale: `Untested angle: your winning ${fmtLabel(format)} format applied to a ${patternLabel("angle", angle).toLowerCase()}, which you haven't tried yet. It gives you a fresh lever before today's winners fatigue.`,
+      rationale: `Untested angle: your winning ${fmtLabel(format)} format applied to ${an(patternLabel("angle", angle))} ${patternLabel("angle", angle).toLowerCase().replace("ugc", "UGC")}, which you haven't tried yet. It gives you a fresh lever before today's winners fatigue.`,
     });
   });
 

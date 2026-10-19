@@ -12,7 +12,8 @@ export function appliedCycles(history: CycleRecord[]): CycleRecord[] {
  * Compares current metrics with the metrics at the moment of the last increase. Fires when ANY of:
  * CPM up more than X% (saturation), ROAS down more than X% (budget sensitivity),
  * frequency rising while CTR falls, CPA more than X% over the client's max after a scale,
- * or N consecutive cycles whose efficiency fell after scaling.
+ * or N consecutive cycles whose efficiency (conversions per dollar) fell by more than X% after scaling.
+ * A small efficiency loss per step is normal diminishing returns and does not count.
  */
 export function detectCeiling(
   cycleHistory: CycleRecord[],
@@ -60,10 +61,12 @@ export function detectCeiling(
   const n = t.decliningEfficiencyCycles;
   const evaluated = cycles.filter((c) => c.postMetrics);
   const tail = evaluated.slice(-n);
-  if (tail.length === n && tail.every((c) => c.postMetrics!.efficiency < c.preMetrics.efficiency)) {
+  const tolerance = t.efficiencyDropPct ?? 0.05;
+  const dropped = (c: CycleRecord) => (relChange(c.preMetrics.efficiency, c.postMetrics!.efficiency) ?? 0) < -tolerance;
+  if (tail.length === n && tail.every(dropped)) {
     reasons.push({
       code: "declining_efficiency",
-      message: `Each of your last ${n} increases bought fewer conversions per dollar than the budget before it.`,
+      message: `Each of your last ${n} increases cut conversions per dollar by more than ${fmtPct(tolerance)}.`,
     });
   }
 

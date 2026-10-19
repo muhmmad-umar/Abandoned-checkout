@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "worker": "tsx src/worker.ts"
+    "worker": "tsx src/worker.ts",
+    "seed:demo": "tsx src/demo/seed.ts"
   },
   "dependencies": {
     "@ad-scaler/creative-engine": "*",

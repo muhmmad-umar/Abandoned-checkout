@@ -52,9 +52,19 @@ export async function campaignView(s: ApiServices, campaignId: string) {
       )
     : null;
   const earlyScale = shown?.decision.cooldown?.active ? evaluateEarlyScaleRequest(shown.decision, shown.metrics, ctx.brief, now) : null;
-  const scalingHealth = ctx.daily.length ? calculateScalingHealthScore(ctx.cycles, aggregateWindow(ctx.daily, ctx.thresholds.lookbackDays)) : null;
+  const scalingHealth = ctx.daily.length ? calculateScalingHealthScore(ctx.cycles, aggregateWindow(ctx.daily, ctx.thresholds.lookbackDays), { minRoas: ctx.thresholds.hardStopMinRoas, maxCpa: ctx.thresholds.hardStopMaxCpa }) : null;
+
+  const lastRow = [...ctx.cycleRows].reverse().find((c) => c.status === "active" || c.status === "completed");
+  const lastCycle = lastRow
+    ? {
+        cycleNumber: lastRow.cycleNumber, startedAt: lastRow.startedAt, budgetBefore: Number(lastRow.budgetBefore), budgetAfter: Number(lastRow.budgetAfter),
+        pctChange: Number(lastRow.pctChange), systemRecommendationPct: Number(lastRow.systemRecommendationPct), clientChosenPct: Number(lastRow.clientChosenPct),
+        overrideFlag: lastRow.overrideFlag, earlyTriggerFlag: lastRow.earlyTriggerFlag, systemNote: lastRow.systemNote, outcome: lastRow.outcomeVsPrediction,
+      }
+    : null;
 
   return {
+    lastCycle,
     campaign: {
       id: ctx.campaign.id, name: ctx.campaign.name, status: ctx.campaign.status, scalingState: ctx.campaign.scalingState,
       currentDailyBudget: ctx.currentDailyBudget ?? null, lastSyncedAt: ctx.campaign.lastSyncedAt,

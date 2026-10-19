@@ -5,7 +5,7 @@ const LENGTH: Record<LengthBucket, string> = { short: "Short-form (<15s)", mid: 
 
 /** "pain_point" → "Pain point". */
 export function humanize(v: string): string {
-  const s = v.replace(/[_-]+/g, " ").trim();
+  const s = v.replace(/[_-]+/g, " ").trim().replace(/\bugc\b/gi, "UGC");
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 

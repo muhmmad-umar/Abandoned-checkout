@@ -25,8 +25,14 @@ export function scalingHealthLabel(score: number): ScalingHealthLabel {
  * Trends are measured from the start of the cycle history (or the prior window when there is
  * no history) to now. Flat or improving earns full points; each degrades to zero at:
  * ROAS -25%, CPM +30%, frequency 4.0+, CPA +25%, efficiency -30%.
+ * Trends alone can look stable after a collapse, so when `limits` are given and the client's
+ * ROAS floor or CPA ceiling is breached, the score is capped at 39 (the pause band).
  */
-export function calculateScalingHealthScore(cycleHistory: CycleRecord[], currentMetrics: ScalingMetrics): number {
+export function calculateScalingHealthScore(
+  cycleHistory: CycleRecord[],
+  currentMetrics: ScalingMetrics,
+  limits?: { minRoas: number; maxCpa: number },
+): number {
   const cycles = appliedCycles(cycleHistory);
   const baseline: MetricPoint | null = cycles[0]?.preMetrics ?? currentMetrics.prior;
 
@@ -40,5 +46,7 @@ export function calculateScalingHealthScore(cycleHistory: CycleRecord[], current
   let frequency = lerpClamped(currentMetrics.frequency, 2, 4, 20, 0);
   if (currentMetrics.frequencyTrend === "up") frequency = Math.max(0, frequency - 5);
 
-  return Math.round(roas + cpm + cpa + efficiency + frequency);
+  const score = Math.round(roas + cpm + cpa + efficiency + frequency);
+  const breached = limits && (currentMetrics.roas < limits.minRoas || (currentMetrics.cpa != null && currentMetrics.cpa > limits.maxCpa));
+  return breached ? Math.min(score, 39) : score;
 }
