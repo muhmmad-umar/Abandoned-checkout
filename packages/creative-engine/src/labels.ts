@@ -3,6 +3,7 @@ import type { LengthBucket, PatternDimension } from "./types";
 const FORMAT: Record<string, string> = { static: "Static", video: "Video", carousel: "Carousel", ugc: "UGC" };
 const LENGTH: Record<LengthBucket, string> = { short: "Short-form (<15s)", mid: "Mid-form (15-30s)", long: "Long-form (30s+)" };
 
+/** "pain_point" → "Pain point". */
 export function humanize(v: string): string {
   const s = v.replace(/[_-]+/g, " ").trim();
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -19,6 +20,7 @@ export function patternLabel(dimension: PatternDimension, value: string): string
   }
 }
 
+/** Video length bucket: short under 15s, mid 15-30s, long over 30s. */
 export function lengthBucket(sec: number | null | undefined): LengthBucket | null {
   if (sec == null) return null;
   return sec < 15 ? "short" : sec <= 30 ? "mid" : "long";

@@ -112,7 +112,7 @@ export async function runCreativeAnalysis(deps: Deps, campaignId: string, trigge
 }
 
 /** Latest creative health and fatigued share, or null before the first analysis. */
-export async function latestCreativeHealth(deps: Deps, campaignId: string) {
+export async function latestCreativeHealth(deps: Pick<Deps, "db">, campaignId: string) {
   const brief = await deps.db.creativeBrief.findFirst({ where: { campaignId }, orderBy: { generatedAt: "desc" } });
   if (!brief) return null;
   const scores = await deps.db.creativeScore.findMany({ where: { analysisRunId: brief.analysisRunId } });

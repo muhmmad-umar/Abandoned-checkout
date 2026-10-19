@@ -39,6 +39,17 @@ describe("scoreCreatives", () => {
   });
 });
 
+describe("campaigns with no data yet", () => {
+  it("scores nothing and flags nothing instead of throwing", async () => {
+    const { detectFatigue, calculateCreativeHealthScore } = await import("../src");
+    const empty = [{ adId: "a", name: "A", attributes: { format: "static" as const }, daily: [] }];
+    const ranked = scoreCreatives(empty);
+    expect(ranked).toMatchObject([{ adId: "a", score: null, hasEnoughData: false }]);
+    expect(detectFatigue(empty, { healthyRoas: 2, targetCpa: 25, noConversionSpend: 50 })).toEqual([]);
+    expect(calculateCreativeHealthScore(ranked, [], null, { now: new Date(), refreshFrequency: "weekly", untestedAngleCount: 0 })).toBe(0);
+  });
+});
+
 describe("windowMetrics / creativeTrend", () => {
   it("weights hook rate by impressions", () => {
     const m = windowMetrics([

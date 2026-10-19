@@ -23,7 +23,7 @@ const STATE_FOR: Record<DecisionStatus, ScalingState> = {
 const STUCK_AFTER_MS = 10 * 60_000;
 
 /** Builds the current decision from fresh data. Returns null when there is no data or no creative analysis yet. */
-export async function currentDecision(deps: Deps, ctx: CampaignContext): Promise<{ decision: ScaleDecision; metrics: ScalingMetrics } | null> {
+export async function currentDecision(deps: Pick<Deps, "db" | "now">, ctx: CampaignContext): Promise<{ decision: ScaleDecision; metrics: ScalingMetrics } | null> {
   if (ctx.daily.length === 0) return null;
   const health = await latestCreativeHealth(deps, ctx.campaign.id);
   if (!health) return null;
@@ -137,7 +137,8 @@ export async function evaluateScaling(deps: Deps, campaignId: string): Promise<E
   const { db } = deps;
   await reconcileStuckExecutions(deps, campaignId);
   let ctx = await loadCampaignContext(deps, campaignId);
-  if (ctx.campaign.status !== "active") return { status: "inactive" };
+  const monitoring = ctx.campaign.status === "monitoring";
+  if (ctx.campaign.status !== "active" && !monitoring) return { status: "inactive" };
   if (await evaluateCycleOutcomes(deps, ctx)) ctx = await loadCampaignContext(deps, campaignId);
 
   if (ctx.daily.length === 0) return { status: "awaiting_data" };
@@ -148,6 +149,17 @@ export async function evaluateScaling(deps: Deps, campaignId: string): Promise<E
   }
   const { decision, metrics } = current;
   const healthScore = calculateScalingHealthScore(ctx.cycles, metrics);
+
+  // Monitoring mode (goal reached, client chose to hold): alert on problems, never recommend increases.
+  if (monitoring) {
+    const alerting = decision.status === "ceiling" || decision.status === "hard_stop";
+    const c = ctx.campaign;
+    if (alerting && c.scalingState !== STATE_FOR[decision.status]) {
+      await db.campaign.update({ where: { id: campaignId }, data: { scalingState: STATE_FOR[decision.status] } });
+      await notifyUser(deps, c.userId, templates.scalingBlocked(c, decision.ceiling.alert ?? decision.message, campaignLink(deps, campaignId)));
+    }
+    return { status: decision.status, scalingHealthScore: healthScore };
+  }
   const newState = STATE_FOR[decision.status];
   const prevState = ctx.campaign.scalingState;
 

@@ -34,6 +34,8 @@ function shiftIso(iso: string, days: number): string {
 
 /** Splits rows into the current window and the prior window ending at `asOf`. */
 export function splitWindows(daily: CreativeDailyMetrics[], asOf: string, windowDays: number) {
+  // No data anywhere in the campaign yet (e.g. a brand-new campaign).
+  if (!asOf) return { current: [] as CreativeDailyMetrics[], prior: [] as CreativeDailyMetrics[] };
   const curStart = shiftIso(asOf, -(windowDays - 1));
   const priorStart = shiftIso(asOf, -(2 * windowDays - 1));
   return {

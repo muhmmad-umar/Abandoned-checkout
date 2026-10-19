@@ -3,7 +3,7 @@ import { addDays, DAY_MS, isoDate } from "@ad-scaler/shared";
 import type { Deps } from "./deps";
 
 /** Loads everything the engines need for one campaign. Throws if no brief has been submitted. */
-export async function loadCampaignContext(deps: Deps, campaignId: string, historyDays = 28) {
+export async function loadCampaignContext(deps: Pick<Deps, "db" | "now">, campaignId: string, historyDays = 28) {
   const campaign = await deps.db.campaign.findUniqueOrThrow({
     where: { id: campaignId },
     include: { brief: true, adAccount: true },
