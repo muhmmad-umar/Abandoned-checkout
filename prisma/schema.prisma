@@ -1,0 +1,75 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Workspace {
+  id        String      @id @default(cuid())
+  name      String
+  createdAt DateTime    @default(now())
+  members   Member[]
+  accounts  AdAccount[]
+  rules     RuleRecord[]
+}
+
+model User {
+  id      String   @id @default(cuid())
+  email   String   @unique
+  members Member[]
+}
+
+model Member {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        String    @default("MEMBER") // OWNER | ADMIN | MEMBER
+  user        User      @relation(fields: [userId], references: [id])
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([userId, workspaceId])
+}
+
+model AdAccount {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  metaAccountId  String    // act_123...
+  /// Encrypted at rest (AES-GCM, key from env). Never log.
+  encryptedToken String
+  tokenExpiresAt DateTime?
+  autoApply      Boolean   @default(false) // false = dry-run / approval mode
+  workspace      Workspace @relation(fields: [workspaceId], references: [id])
+  rules          RuleRecord[]
+  actions        ActionLog[]
+
+  @@unique([workspaceId, metaAccountId])
+}
+
+model RuleRecord {
+  id          String     @id @default(cuid())
+  workspaceId String
+  accountId   String?
+  name        String
+  definition  Json       // conditions + action + cooldown (see src/rules/types.ts)
+  enabled     Boolean    @default(true)
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id])
+  account     AdAccount? @relation(fields: [accountId], references: [id])
+}
+
+/// Audit log of every decision and change made to an account. Also feeds the 24h-increase cap and cooldowns.
+model ActionLog {
+  id        String    @id @default(cuid())
+  accountId String
+  ruleId    String
+  adSetId   String
+  kind      String    // SET_BUDGET | PAUSE | DUPLICATE | SKIP
+  payload   Json
+  applied   Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  account   AdAccount @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, adSetId, createdAt])
+}
