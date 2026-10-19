@@ -1,0 +1,493 @@
+// Ad Scaler data model. Table and column names are snake_case in Postgres.
+// Money columns are Decimal(12,2) in the ad account's currency, major units.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  meta
+  google
+  tiktok
+}
+
+enum PlanTier {
+  free
+  starter
+  growth
+  agency
+}
+
+enum ScalePreference {
+  conservative
+  moderate
+  aggressive
+  auto
+}
+
+enum RefreshFrequency {
+  weekly
+  biweekly
+  monthly
+  adhoc
+}
+
+enum CampaignStatus {
+  draft      // connected, brief not yet submitted
+  active     // automation running
+  monitoring // goal reached, watching only
+  paused     // automation paused by the client
+}
+
+/// Phase 2 state, separate from the platform's delivery status.
+enum ScalingState {
+  idle
+  awaiting_client // a recommendation card is waiting for the client
+  cooldown
+  blocked
+  ceiling
+  goal_reached
+}
+
+enum CreativeTrend {
+  improving
+  stable
+  declining
+}
+
+enum BriefItemStatus {
+  pending
+  brief_sent
+  in_production
+  uploaded
+  live
+}
+
+enum AnalysisTrigger {
+  schedule
+  fatigue
+  manual
+  ceiling
+}
+
+enum CycleStatus {
+  executing // logged and sent to the platform, awaiting the API response
+  active    // applied; in cooldown or awaiting outcome evaluation
+  completed // outcome evaluated
+  failed    // platform call failed; does not count as a cycle
+}
+
+enum CycleOutcome {
+  better
+  as_expected
+  worse
+}
+
+enum TriggeredBy {
+  system
+  client_override
+  early_override
+}
+
+enum ApiCallStatus {
+  pending
+  success
+  failed
+}
+
+enum RiskAppetite {
+  conservative
+  moderate
+  aggressive
+}
+
+enum RecommendationStatus {
+  open
+  applied
+  dismissed
+  superseded
+}
+
+model User {
+  id                      String   @id @default(cuid())
+  clerkId                 String   @unique @map("clerk_id")
+  email                   String   @unique
+  name                    String?
+  planTier                PlanTier @default(free) @map("plan_tier")
+  /// { email: bool, slack: bool, inApp: bool, slackWebhookUrl?: string }
+  notificationPreferences Json     @default("{\"email\":true,\"slack\":false,\"inApp\":true}") @map("notification_preferences")
+  createdAt               DateTime @default(now()) @map("created_at")
+
+  adAccounts       AdAccount[]
+  campaigns        Campaign[]
+  briefs           CampaignBrief[]
+  scalingProfiles  ClientScalingProfile[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model AdAccount {
+  id             String    @id @default(cuid())
+  userId         String    @map("user_id")
+  platform       Platform
+  accountId      String    @map("account_id")
+  name           String?
+  currency       String    @default("USD")
+  /// AES-256-GCM ciphertext (see @ad-scaler/shared encryptSecret). Never store or log plaintext.
+  accessToken    String    @map("access_token")
+  tokenExpiresAt DateTime? @map("token_expires_at")
+  connectedAt    DateTime  @default(now()) @map("connected_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@unique([userId, platform, accountId])
+  @@map("ad_accounts")
+}
+
+model Campaign {
+  id                 String         @id @default(cuid())
+  userId             String         @map("user_id")
+  adAccountId        String         @map("ad_account_id")
+  platformCampaignId String         @map("platform_campaign_id")
+  name               String
+  status             CampaignStatus @default(draft)
+  scalingState       ScalingState   @default(idle) @map("scaling_state")
+  /// Where the budget lives on the platform: the campaign (CBO) or a single ad set.
+  budgetLevel        String         @default("campaign") @map("budget_level")
+  budgetEntityId     String?        @map("budget_entity_id")
+  currentDailyBudget Decimal?       @db.Decimal(12, 2) @map("current_daily_budget")
+  launchedAt         DateTime?      @map("launched_at")
+  briefId            String?        @unique @map("brief_id")
+  lastSyncedAt       DateTime?      @map("last_synced_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adAccount       AdAccount               @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  brief           CampaignBrief?          @relation("ActiveBrief", fields: [briefId], references: [id])
+  briefs          CampaignBrief[]         @relation("CampaignBriefs")
+  roadmaps        ScalingRoadmap[]
+  ads             Ad[]
+  snapshots       PerformanceSnapshot[]
+  analysisRuns    AnalysisRun[]
+  creativeScores  CreativeScore[]
+  creativeBriefs  CreativeBrief[]
+  cycles          ScalingCycle[]
+  logs            ScalingLog[]
+  recommendations ScalingRecommendation[]
+  scalingProfile  ClientScalingProfile?
+
+  @@unique([adAccountId, platformCampaignId])
+  @@map("campaigns")
+}
+
+/// The Scaling Brief: the client's goal-setting input. Immutable once submitted; a new target creates a new brief.
+model CampaignBrief {
+  id         String @id @default(cuid())
+  campaignId String @map("campaign_id")
+  userId     String @map("user_id")
+
+  currentDailyBudget      Decimal @db.Decimal(12, 2) @map("current_daily_budget")
+  currentDailySpend       Decimal @db.Decimal(12, 2) @map("current_daily_spend")
+  currentDailyConversions Decimal @db.Decimal(12, 2) @map("current_daily_conversions")
+  currentRoas             Decimal @db.Decimal(8, 3) @map("current_roas")
+  currentCpa              Decimal @db.Decimal(12, 2) @map("current_cpa")
+  currentCtr              Decimal @db.Decimal(8, 5) @map("current_ctr")
+  avgOrderValue           Decimal @db.Decimal(12, 2) @map("avg_order_value")
+  campaignAgeDays         Int     @map("campaign_age_days")
+  activeCreativeCount     Int     @map("active_creative_count")
+
+  targetDailyConversions Int      @map("target_daily_conversions")
+  targetRoas             Decimal? @db.Decimal(8, 3) @map("target_roas")
+  targetCpa              Decimal? @db.Decimal(12, 2) @map("target_cpa")
+  targetDailyBudget      Decimal? @db.Decimal(12, 2) @map("target_daily_budget")
+  targetTimelineWeeks    Int?     @map("target_timeline_weeks")
+
+  maxBudgetCap             Decimal          @db.Decimal(12, 2) @map("max_budget_cap")
+  minAcceptableRoas        Decimal          @db.Decimal(8, 3) @map("min_acceptable_roas")
+  maxAcceptableCpa         Decimal          @db.Decimal(12, 2) @map("max_acceptable_cpa")
+  productMarginPct         Decimal          @db.Decimal(5, 4) @map("product_margin_pct")
+  scalePreference          ScalePreference  @map("scale_preference")
+  creativeRefreshFrequency RefreshFrequency @map("creative_refresh_frequency")
+  creativesInProduction    Int              @default(0) @map("creatives_in_production")
+  formatsAvailable         String[]         @map("formats_available")
+  /// ["YYYY-MM-DD", ...]
+  blackoutDates            Json             @default("[]") @map("blackout_dates")
+  /// Auto-set thresholds (Thresholds type), with any client overrides applied.
+  thresholds               Json
+  submittedAt              DateTime         @default(now()) @map("submitted_at")
+
+  campaign       Campaign  @relation("CampaignBriefs", fields: [campaignId], references: [id], onDelete: Cascade)
+  activeFor      Campaign? @relation("ActiveBrief")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roadmaps       ScalingRoadmap[]
+
+  @@index([campaignId, submittedAt])
+  @@map("campaign_briefs")
+}
+
+model ScalingRoadmap {
+  id                       String   @id @default(cuid())
+  campaignId               String   @map("campaign_id")
+  briefId                  String   @map("brief_id")
+  generatedAt              DateTime @default(now()) @map("generated_at")
+  projectedCycles          Json     @map("projected_cycles")
+  estimatedWeeks           Decimal  @db.Decimal(5, 1) @map("estimated_weeks")
+  estimatedCreativesNeeded Int      @map("estimated_creatives_needed")
+  assumptions              Json
+  /// Per cycle: { cycle, projectedOrders, actualOrders, projectedBudget, actualBudget }
+  actualVsProjected        Json     @default("[]") @map("actual_vs_projected")
+
+  campaign Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  brief    CampaignBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, generatedAt])
+  @@map("scaling_roadmaps")
+}
+
+/// Creative metadata. Format and length come from the platform; angle, style and tone are client tags.
+model Ad {
+  id           String    @id @default(cuid())
+  campaignId   String    @map("campaign_id")
+  platformAdId String    @map("platform_ad_id")
+  name         String
+  status       String
+  format       String
+  lengthSec    Int?      @map("length_sec")
+  angle        String?
+  visualStyle  String?   @map("visual_style")
+  tone         String?
+  thumbnailUrl String?   @map("thumbnail_url")
+  launchedAt   DateTime? @map("launched_at")
+  retiredAt    DateTime? @map("retired_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, platformAdId])
+  @@map("ads")
+}
+
+/// Daily metrics per ad. Campaign-level series are aggregated from these.
+model PerformanceSnapshot {
+  id                  String   @id @default(cuid())
+  campaignId          String   @map("campaign_id")
+  adId                String   @map("ad_id") // platform ad id
+  date                DateTime @db.Date
+  spend               Decimal  @db.Decimal(12, 2)
+  impressions         Int
+  clicks              Int
+  ctr                 Decimal  @db.Decimal(8, 5)
+  cpm                 Decimal  @db.Decimal(12, 4)
+  roas                Decimal  @db.Decimal(8, 3)
+  cpa                 Decimal? @db.Decimal(12, 2)
+  conversions         Decimal  @db.Decimal(12, 2)
+  revenue             Decimal  @db.Decimal(12, 2)
+  frequency           Decimal  @db.Decimal(6, 3)
+  videoCompletionRate Decimal? @db.Decimal(6, 5) @map("video_completion_rate")
+  thumbStopRate       Decimal? @db.Decimal(6, 5) @map("thumb_stop_rate")
+  fetchedAt           DateTime @default(now()) @map("fetched_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, adId, date])
+  @@index([campaignId, date])
+  @@map("performance_snapshots")
+}
+
+model AnalysisRun {
+  id         String          @id @default(cuid())
+  campaignId String          @map("campaign_id")
+  trigger    AnalysisTrigger
+  startedAt  DateTime        @default(now()) @map("started_at")
+  finishedAt DateTime?       @map("finished_at")
+  error      String?
+
+  campaign Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  scores   CreativeScore[]
+  brief    CreativeBrief?
+
+  @@index([campaignId, startedAt])
+  @@map("analysis_runs")
+}
+
+model CreativeScore {
+  id             String        @id @default(cuid())
+  campaignId     String        @map("campaign_id")
+  adId           String        @map("ad_id") // platform ad id
+  analysisRunId  String        @map("analysis_run_id")
+  score          Int?
+  hookRate       Decimal?      @db.Decimal(6, 5) @map("hook_rate")
+  ctr            Decimal       @db.Decimal(8, 5)
+  roas           Decimal       @db.Decimal(8, 3)
+  cpa            Decimal?      @db.Decimal(12, 2)
+  frequency      Decimal       @db.Decimal(6, 3)
+  completionRate Decimal?      @db.Decimal(6, 5) @map("completion_rate")
+  trend          CreativeTrend
+  fatigueFlag    Boolean       @default(false) @map("fatigue_flag")
+  fatigueReason  String?       @map("fatigue_reason")
+  snapshotDate   DateTime      @db.Date @map("snapshot_date")
+
+  campaign    Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  analysisRun AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+
+  @@unique([analysisRunId, adId])
+  @@map("creative_scores")
+}
+
+model CreativeBrief {
+  id                  String    @id @default(cuid())
+  campaignId          String    @map("campaign_id")
+  analysisRunId       String    @unique @map("analysis_run_id")
+  creativeHealthScore Int       @map("creative_health_score")
+  creativesNeeded     Int       @map("creatives_needed")
+  headline            String
+  winningPatterns     Json      @map("winning_patterns")
+  creativesToRetire   Json      @map("creatives_to_retire")
+  generatedAt         DateTime  @default(now()) @map("generated_at")
+  notificationSentAt  DateTime? @map("notification_sent_at")
+
+  campaign    Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  analysisRun AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  items       BriefItem[]
+
+  @@index([campaignId, generatedAt])
+  @@map("creative_briefs")
+}
+
+model BriefItem {
+  id              String          @id @default(cuid())
+  creativeBriefId String          @map("creative_brief_id")
+  priority        Int
+  suggestedFormat String          @map("suggested_format")
+  suggestedAngle  String          @map("suggested_angle")
+  rationale       String
+  whatToAvoid     String          @map("what_to_avoid")
+  /// kind, suggested length/style/tone, replaces_ad_id
+  details         Json            @default("{}")
+  status          BriefItemStatus @default(pending)
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  creativeBrief CreativeBrief @relation(fields: [creativeBriefId], references: [id], onDelete: Cascade)
+
+  @@map("brief_items")
+}
+
+/// The recommendation card presented to the client. Nothing executes until the client answers it.
+model ScalingRecommendation {
+  id           String               @id @default(cuid())
+  campaignId   String               @map("campaign_id")
+  status       RecommendationStatus @default(open)
+  decision     Json                 // ScaleDecision
+  metrics      Json                 // ScalingMetrics at evaluation time
+  healthScore  Int                  @map("scaling_health_score")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  resolvedAt   DateTime?            @map("resolved_at")
+
+  campaign Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  cycle    ScalingCycle?
+
+  @@index([campaignId, createdAt])
+  @@map("scaling_recommendations")
+}
+
+model ScalingCycle {
+  id                         String        @id @default(cuid())
+  campaignId                 String        @map("campaign_id")
+  recommendationId           String?       @unique @map("recommendation_id")
+  cycleNumber                Int           @map("cycle_number")
+  status                     CycleStatus   @default(executing)
+  startedAt                  DateTime      @default(now()) @map("started_at")
+  cooldownEndsAt             DateTime      @map("cooldown_ends_at")
+  budgetBefore               Decimal       @db.Decimal(12, 2) @map("budget_before")
+  budgetAfter                Decimal       @db.Decimal(12, 2) @map("budget_after")
+  pctChange                  Decimal       @db.Decimal(6, 2) @map("pct_change")
+  systemRecommendationPct    Decimal       @db.Decimal(6, 2) @map("system_recommendation_pct")
+  clientChosenPct            Decimal       @db.Decimal(6, 2) @map("client_chosen_pct")
+  overrideFlag               Boolean       @map("override_flag")
+  earlyTriggerFlag           Boolean       @default(false) @map("early_trigger_flag")
+  dayOfCooldownWhenTriggered Int?          @map("day_of_cooldown_when_triggered")
+  cooldownLength             Int?          @map("cooldown_length")
+  ceilingOverrideFlag        Boolean       @default(false) @map("ceiling_override_flag")
+  triggerMetrics             Json          @map("trigger_metrics")
+  systemRationale            String        @map("system_rationale")
+  postCycleRoas              Decimal?      @db.Decimal(8, 3) @map("post_cycle_roas")
+  postCycleCpa               Decimal?      @db.Decimal(12, 2) @map("post_cycle_cpa")
+  postCycleConversions       Decimal?      @db.Decimal(12, 2) @map("post_cycle_conversions")
+  postCycleMetrics           Json?         @map("post_cycle_metrics")
+  outcomeVsPrediction        CycleOutcome? @map("outcome_vs_prediction")
+  ceilingDetected            Boolean       @default(false) @map("ceiling_detected")
+  ceilingReason              String?       @map("ceiling_reason")
+  systemNote                 String?       @map("system_note")
+
+  campaign       Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recommendation ScalingRecommendation? @relation(fields: [recommendationId], references: [id])
+  logs           ScalingLog[]
+
+  @@index([campaignId, startedAt])
+  @@map("scaling_cycles")
+}
+
+/// Immutable, append-only audit log. A DB trigger rejects DELETE and any UPDATE other than
+/// resolving api_call_status/error_message from 'pending'.
+model ScalingLog {
+  id           String        @id @default(cuid())
+  campaignId   String        @map("campaign_id")
+  cycleId      String?       @map("cycle_id")
+  actionType   String        @map("action_type")
+  oldValue     Json?         @map("old_value")
+  newValue     Json?         @map("new_value")
+  triggeredBy  TriggeredBy   @map("triggered_by")
+  apiCallStatus ApiCallStatus @default(pending) @map("api_call_status")
+  errorMessage String?       @map("error_message")
+  timestamp    DateTime      @default(now())
+
+  campaign Campaign      @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  cycle    ScalingCycle? @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+
+  @@index([campaignId, timestamp])
+  @@map("scaling_logs")
+}
+
+model ClientScalingProfile {
+  id                        String       @id @default(cuid())
+  userId                    String       @map("user_id")
+  campaignId                String       @unique @map("campaign_id")
+  totalCycles               Int          @default(0) @map("total_cycles")
+  totalOverrides            Int          @default(0) @map("total_overrides")
+  overrideOutperformedCount Int          @default(0) @map("override_outperformed_count")
+  avgClientVsSystemDelta    Decimal      @default(0) @db.Decimal(6, 2) @map("avg_client_vs_system_delta")
+  riskAppetite              RiskAppetite @default(moderate) @map("risk_appetite")
+  autoCalculated            Boolean      @default(true) @map("auto_calculated")
+  manuallyAdjusted          Boolean      @default(false) @map("manually_adjusted")
+  /// Pattern insights already shown, by kind, so each is shown once.
+  insightsShown             Json         @default("[]") @map("insights_shown")
+  updatedAt                 DateTime     @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("client_scaling_profiles")
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  campaignId String?   @map("campaign_id")
+  kind       String
+  title      String
+  body       String
+  link       String?
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}

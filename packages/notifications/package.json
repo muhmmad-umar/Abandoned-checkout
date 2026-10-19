@@ -1,0 +1,8 @@
+{
+  "name": "@ad-scaler/notifications",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {"@ad-scaler/shared": "*", "resend": "^4.8.0"}
+}
